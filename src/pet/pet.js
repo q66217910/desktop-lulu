@@ -180,7 +180,7 @@ window.addEventListener('mouseup', () => {
   if (dragMoved < 6) {
     // 视为点击：开心一下
     setState(STATE.CLICK, 600);
-    const quips = ['别慌~', '哼唧，再摸一下', '噜噜开心！', '有橘子吗？', '活着挺好~', '情绪稳定！'];
+    const quips = ['别慌~', '哼唧，再摸一下', '有橘子吗？', '活着挺好~', '情绪稳定！', '不慌，都能过去', '呜~慢热，别急'];
     say(quips[Math.floor(Math.random() * quips.length)], 1800);
   } else {
     setState(STATE.IDLE);
