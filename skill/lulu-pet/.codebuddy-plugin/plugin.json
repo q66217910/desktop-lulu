@@ -1,0 +1,13 @@
+{
+  "name": "lulu-pet",
+  "version": "1.0.0",
+  "description": "水豚噜噜桌面宠物：Electron 透明窗口桌宠 + MCP 远程逗宠 + AI 技能。让 WorkBuddy 的完成庆祝、久坐提醒都有一只水豚陪着你。",
+  "author": {
+    "name": "张德"
+  },
+  "homepage": {
+    "url": "",
+    "type": "github"
+  },
+  "license": "MIT"
+}

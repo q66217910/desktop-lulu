@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>噜噜</title>
+  <link rel="stylesheet" href="pet.css">
+</head>
+<body>
+  <div id="stage">
+    <!-- 对话气泡（显示在宠物头顶上方） -->
+    <div id="bubble" class="hidden"><span id="bubble-text"></span></div>
+
+    <!-- 睡觉 Zzz -->
+    <div id="zzz" class="hidden"><span>Z</span><span>Z</span><span>Z</span></div>
+
+    <!-- 水豚噜噜（《平头头哥》IP 官方指针皮肤姿势图，PNG 透明底） -->
+    <img id="pet-img" src="assets/idle.png" alt="噜噜" draggable="false">
+
+    <!-- 庆祝星星粒子层 -->
+    <div id="sparkles"></div>
+  </div>
+  <script src="pet.js"></script>
+</body>
+</html>

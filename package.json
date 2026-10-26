@@ -1,0 +1,36 @@
+{
+  "name": "lulu-pet",
+  "version": "1.0.0",
+  "description": "水豚噜噜 - WorkBuddy 桌面宠物插件（Electron 桌宠 + MCP server + skill）",
+  "main": "src/main/main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "mcp": "node src/mcp/server.js",
+    "install:mcp": "node scripts/install-mcp.js",
+    "smoke": "node scripts/smoke-test.js",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "build": {
+    "appId": "com.lulu.pet",
+    "productName": "lulu-pet",
+    "files": [
+      "src/**/*",
+      "!src/**/*.map"
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "lulu-pet-portable.exe"
+    },
+    "asar": true
+  }
+}
