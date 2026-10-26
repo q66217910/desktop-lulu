@@ -7,6 +7,7 @@ const bubble = document.getElementById('bubble');
 const bubbleText = document.getElementById('bubble-text');
 const sparkles = document.getElementById('sparkles');
 const zzz = document.getElementById('zzz');
+const thought = document.getElementById('thought');
 
 /* ---------- 姿势图映射 ---------- */
 const POSES = {
@@ -19,6 +20,7 @@ const POSES = {
   say:       'assets/say.png',       // 双手张开
   error:     'assets/error.png',     // 生气 X 眼
   idle2:     'assets/idle2.png',     // 站立（待机微动备用）
+  think:     'assets/say.png',       // 思考（张臂姿势 + 💭 气泡 + 缓摆）
 };
 
 /* 启动即预加载全部姿势，切换零延迟 */
@@ -40,13 +42,18 @@ function swapPose(name) {
 }
 
 /* ---------- 状态机 ---------- */
-const STATE = { IDLE: 'idle', CLICK: 'click', DRAG: 'drag', WALK: 'walk', SLEEP: 'sleep', CELEBRATE: 'celebrate' };
+const STATE = { IDLE: 'idle', CLICK: 'click', DRAG: 'drag', WALK: 'walk', SLEEP: 'sleep', CELEBRATE: 'celebrate', THINK: 'think' };
+/* think 自动收尾时长：AI 思考态展示 30 秒，无后续动作自动回待机 */
+const THINK_MS = 30000;
 let currentState = STATE.IDLE;
 let stateTimer = null;
+let thoughtTimer = null; // think 自动收尾定时器：30 秒无后续动作回待机（setState 里会 clear）
 
 function setState(next, duration = 0) {
   clearTimeout(stateTimer);
   stage.className = '';
+  thought.classList.add('hidden'); // 思考气泡不与其他状态叠加
+  clearTimeout(thoughtTimer);
   // 重新触发 CSS 动画：先 reflow 再加 class
   void stage.offsetWidth;
   if (next === STATE.IDLE) {
@@ -59,6 +66,9 @@ function setState(next, duration = 0) {
   // Zzz 显隐不能只靠 CSS（.hidden 带 !important），由状态机直接控制
   if (next === STATE.SLEEP) zzz.classList.remove('hidden');
   else zzz.classList.add('hidden');
+  // 思考气泡同理：仅思考状态显示
+  if (next === STATE.THINK) thought.classList.remove('hidden');
+  else thought.classList.add('hidden');
   if (duration > 0) {
     stateTimer = setTimeout(() => setState(STATE.IDLE), duration);
   }
@@ -89,6 +99,7 @@ scheduleFidget();
 /* ---------- 对话气泡 ---------- */
 let bubbleTimer = null;
 function say(text, ms = 3600) {
+  if (currentState === STATE.THINK) setState(STATE.IDLE); // 说话时退出思考，避免两个动画叠加
   bubbleText.textContent = text;
   bubble.classList.remove('hidden');
   // 重启弹入动画
@@ -119,6 +130,15 @@ function sparkleBurst() {
   }
 }
 
+/* ---------- 好感度飘字 ---------- */
+function floatBond(amount) {
+  const el = document.createElement('div');
+  el.className = 'bond-float';
+  el.textContent = `好感度 +${amount} ♥`;
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+
 /* ---------- 动作入口（HTTP / MCP 调用） ---------- */
 function doAction(action, payload) {
   switch (action) {
@@ -145,6 +165,26 @@ function doAction(action, payload) {
       break;
     case 'idle':
       setState(STATE.IDLE);
+      break;
+    case 'think':
+      // 思考态：💭 气泡 + 缓摆。30 秒无后续动作自动回待机——
+      // 对话/任务结束时不会卡在思考里；超长任务中 AI 再次调用即为"续杯"
+      if (currentState === STATE.SLEEP) ipcRenderer.send('pet-sleep-state', false);
+      setState(STATE.THINK);
+      clearTimeout(thoughtTimer);
+      thoughtTimer = setTimeout(() => {
+        if (currentState === STATE.THINK) setState(STATE.IDLE);
+      }, THINK_MS);
+      break;
+    case 'eat':
+      // 喂食：咀嚼动画（睡觉中被喂食先醒来）
+      if (currentState === STATE.SLEEP) setState(STATE.IDLE);
+      swapPose('click');
+      stage.classList.add('state-eat');
+      setTimeout(() => stage.classList.remove('state-eat'), 1000);
+      break;
+    case 'bond':
+      floatBond((payload && payload.amount) || 1);
       break;
     case 'say':
       say(String(payload && payload.text ? payload.text : ''), payload && payload.ms ? payload.ms : 3600);
@@ -178,8 +218,9 @@ window.addEventListener('mouseup', () => {
   if (!mouseDown) return;
   mouseDown = false;
   if (dragMoved < 6) {
-    // 视为点击：开心一下
+    // 视为点击：开心一下 + 攒好感度
     setState(STATE.CLICK, 600);
+    ipcRenderer.send('pet-bond', 1);
     const quips = ['别慌~', '哼唧，再摸一下', '有橘子吗？', '活着挺好~', '情绪稳定！', '不慌，都能过去', '呜~慢热，别急'];
     say(quips[Math.floor(Math.random() * quips.length)], 1800);
   } else {

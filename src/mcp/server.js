@@ -92,6 +92,60 @@ function readToken() {
   return t;
 }
 
+/* ---------- 对话事件联动：事件 → 动作 + 内容 ----------
+ * 关联 WorkBuddy 对话生命周期：每个事件配一套动作序列和噜噜口吻的台词。
+ * 睡觉中的噜璐会先被叫醒（wake），再执行事件动作。 */
+const CHAT_EVENTS = {
+  // 新对话开启 / 用户回来开工
+  open: {
+    actions: [], // 唤醒由 ensureAwake 统一处理
+    lines: ['来啦？呜~坐吧', '新对话…开摸', '哦…又是你，坐吧', '开工开工，不慌'],
+  },
+  // 对话被命名 / 设置标题（{t} 会被替换成标题）
+  rename: {
+    actions: ['jump'],
+    lines: ['「{t}」？记下了', '这题叫「{t}」…慢慢来', '好嘞，「{t}」…', '「{t}」…不费脑子的样子'],
+  },
+  // 对话里的任务完成 / 交付成果
+  done: {
+    actions: ['celebrate'],
+    lines: ['搞定！噜噜给你撒花~', '又完成一件…厉害厉害', '收工！去泡温泉？', '哼唧…还不错嘛'],
+  },
+  // 长任务进行中，噜噜值守
+  busy: {
+    actions: [],
+    lines: ['去吧去吧，我看包', '不催…我守着', '慢慢跑，桌我看着'],
+  },
+  // 对话收尾 / 用户暂别
+  bye: {
+    actions: [],
+    lines: ['走了？呜~见', '去忙吧…噜噜在', '晚安…记得回来'],
+  },
+  // 开始学习新主题/课题（{t} 会被替换成课题名）
+  study: {
+    actions: ['jump'],
+    lines: ['今日课题「{t}」…记下了', '「{t}」？慢慢来', '开讲啦？噜噜拿笔记'],
+  },
+  // 学习打卡：答对/答错（动作和台词在 lulu_chat 处理器里按 correct 动态生成）
+  quiz: { actions: [], lines: [] },
+  // 盯盘：股票涨跌播报（动作和台词按 changePct 动态生成）
+  stock: { actions: [], lines: [] },
+};
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+/* 睡觉中就叫醒；醒着则不动。返回是否执行了唤醒 */
+async function ensureAwake() {
+  try {
+    const s = await request('GET', '/status');
+    if (s && s.sleeping) {
+      await request('POST', '/act', { action: 'wake' }, readToken());
+      return true;
+    }
+  } catch { /* 状态查询失败不阻塞，按醒着处理 */ }
+  return false;
+}
+
 /* ---------- MCP 工具 ---------- */
 const server = new McpServer({ name: 'lulu-pet', version: '1.0.0' });
 
@@ -111,9 +165,9 @@ server.tool(
 
 server.tool(
   'lulu_act',
-  '让噜噜做一个动作。celebrate=开心跳跃撒花(任务完成时用), jump=弹一下, sleep=去睡觉, wake=叫醒, walk=屏幕底部散步, idle=待机。',
+  '让噜噜做一个动作。celebrate=开心跳跃撒花(任务完成时用), jump=弹一下, think=思考中(💭气泡+缓摆,持续到下一个动作), sleep=去睡觉, wake=叫醒, walk=屏幕底部散步, idle=待机。',
   {
-    action: z.enum(['celebrate', 'jump', 'sleep', 'wake', 'walk', 'idle']).describe('动作名称'),
+    action: z.enum(['celebrate', 'jump', 'think', 'sleep', 'wake', 'walk', 'idle']).describe('动作名称'),
   },
   async ({ action }) => {
     await ensurePet();
@@ -152,6 +206,95 @@ server.tool(
     await ensurePet();
     await request('POST', '/say', { text: joke }, readToken());
     return { content: [{ type: 'text', text: joke }] };
+  }
+);
+
+server.tool(
+  'lulu_chat',
+  '关联 WorkBuddy 对话事件：让噜噜做出与对话场景配套的动作+台词。open=新对话开启/用户回来, rename=对话命名或设置标题(传 title), done=对话中任务完成, busy=跑长任务时噜噜值守, bye=对话收尾暂别, study=开始学习新课题(传 title), quiz=学习打卡(传 correct 是否答对), stock=股票涨跌播报(传 title 股票名 + changePct 涨跌幅，大涨庆祝大跌安慰)。',
+  {
+    event: z.enum(['open', 'rename', 'done', 'busy', 'bye', 'study', 'quiz', 'stock']).describe('对话事件类型'),
+    title: z.string().max(50).optional().describe('rename/study/stock 事件用：对话标题/课题名/股票名'),
+    changePct: z.number().optional().describe('stock 事件用：涨跌幅百分比，如 3.2 或 -1.5'),
+    correct: z.boolean().optional().describe('quiz 事件用：用户是否答对'),
+    text: z.string().max(200).optional().describe('自定义台词，覆盖随机台词'),
+    ms: z.number().int().min(1000).max(30000).optional().describe('气泡停留毫秒数，默认 4200'),
+  },
+  async ({ event, title, text, ms, changePct, correct }) => {
+    await ensurePet();
+    const conf = CHAT_EVENTS[event];
+    await ensureAwake(); // 睡觉中的噜噜先叫醒，别对着趴姿说话
+    let actions = conf.actions;
+    let line = text;
+    if (event === 'stock') {
+      // 盯盘：大涨庆祝、大跌安慰（A 股红涨绿跌）
+      const pct = typeof changePct === 'number' ? changePct : 0;
+      const nm = String(title || '它').slice(0, 10);
+      if (pct >= 5) { actions = ['celebrate']; line = line || `「${nm}」涨停？！噜噜给你撒花~`; }
+      else if (pct >= 2) { actions = ['celebrate']; line = line || `「${nm}」红红火火，呜~`; }
+      else if (pct <= -5) { actions = []; line = line || `「${nm}」…不急，噜噜在呢`; }
+      else if (pct <= -2) { actions = []; line = line || `「${nm}」绿了一点…摸摸头`; }
+      else { actions = []; line = line || `「${nm}」…风平浪静，喝茶`; }
+    } else if (event === 'quiz') {
+      // 学习打卡：答对庆祝、答错安慰
+      if (correct) {
+        actions = ['celebrate'];
+        line = line || pick(['答对啦！哼唧，厉害嘛', '对！噜噜记小本本', '漂亮~这题稳了']);
+      } else {
+        actions = [];
+        line = line || pick(['错啦？不急…下一题', '呜~这题坑，跳过', '哼唧…错的不是你是题']);
+      }
+    } else if (event === 'rename' || event === 'study') {
+      line = line || pick(conf.lines).replace('{t}', String(title || (event === 'study' ? '新知识' : '这个对话')).slice(0, 10));
+    } else {
+      line = line || pick(conf.lines);
+    }
+    for (const a of actions) {
+      await request('POST', '/act', { action: a }, readToken());
+    }
+    await request('POST', '/say', { text: line, ms: ms || 4200 }, readToken());
+    const actPart = actions.length ? actions.join('+') + ' + ' : '';
+    return { content: [{ type: 'text', text: `【对话事件 ${event}】噜噜 ${actPart}说：「${line}」` }] };
+  }
+);
+
+server.tool(
+  'lulu_focus',
+  '番茄钟：让噜噜值守指定分钟数，期间它安静待命，结束时自动庆祝并提醒休息（完成 +5 好感度）。',
+  {
+    minutes: z.number().int().min(1).max(120).default(25).describe('专注时长（分钟），默认 25'),
+  },
+  async ({ minutes }) => {
+    await ensurePet();
+    const r = await request('POST', '/focus', { minutes }, readToken());
+    return { content: [{ type: 'text', text: r.ok ? `好嘞，${minutes} 分钟值守开始，噜噜给你看着时间` : `失败：${r.error}` }] };
+  }
+);
+
+server.tool(
+  'lulu_bond',
+  '查看/管理噜噜对你的好感度（养成系统）。status=查看等级/饥饿度/喂食记录；feed=远程喂食（food: orange 橘子 / milk 牛奶 / bath 温泉）；rename=设置它对你的称呼（name）。',
+  {
+    action: z.enum(['status', 'feed', 'rename']).describe('操作类型'),
+    food: z.enum(['orange', 'milk', 'bath']).optional().describe('feed 时用：食物'),
+    name: z.string().max(20).optional().describe('rename 时用：主人称呼'),
+  },
+  async ({ action, food, name }) => {
+    await ensurePet();
+    if (action === 'status') {
+      const b = await request('GET', '/bond');
+      if (!b.ok) return { content: [{ type: 'text', text: `失败：${b.error || 'unknown'}` }] };
+      const foodMap = { orange: '橘子', milk: '牛奶', bath: '温泉' };
+      const feedStr = Object.entries(b.feeds || {}).map(([k, v]) => `${foodMap[k] || k}x${v}`).join('，') || '还没喂过';
+      return { content: [{ type: 'text', text: `好感度 ${b.bond}（Lv.${b.level} ${b.levelName}）｜饥饿度 ${b.hunger}/100｜喂食：${feedStr}｜称呼：${b.name || '未设置'}` }] };
+    }
+    if (action === 'feed') {
+      const r = await request('POST', '/feed', { food }, readToken());
+      const foodMap = { orange: '橘子', milk: '牛奶', bath: '温泉' };
+      return { content: [{ type: 'text', text: r.ok ? `投喂${foodMap[r.food] || r.food}成功，好感度 +5（当前 ${r.bond} · ${r.level}）` : `失败：${r.error}` }] };
+    }
+    const r = await request('POST', '/name', { name: String(name || '').trim() }, readToken());
+    return { content: [{ type: 'text', text: r.ok ? `好，以后叫你「${r.name}」` : `失败：${r.error}` }] };
   }
 );
 

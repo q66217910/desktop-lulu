@@ -13,10 +13,27 @@ const PORT = 18731;
 
 function log(...a) { console.log('[install]', ...a); }
 
-/* 1. 安装 skill */
+/* 1. 安装 skill（整包：SKILL.md + .codebuddy-plugin 元数据 + _user_meta.json 注册标记）
+    注意：_user_meta.json 是 WorkBuddy 识别"已安装技能"的标记，
+    早年只拷 SKILL.md 会导致技能不被注册、AI 永远加载不到规则（表现：桌宠对消息无反应） */
 function installSkill() {
   fs.mkdirSync(SKILL_DST, { recursive: true });
+  // 1a. SKILL.md 主体
   fs.copyFileSync(path.join(PROJECT_ROOT, 'skill', 'lulu-pet', 'SKILL.md'), path.join(SKILL_DST, 'SKILL.md'));
+  // 1b. .codebuddy-plugin 插件元数据
+  const pluginSrc = path.join(PROJECT_ROOT, 'skill', 'lulu-pet', '.codebuddy-plugin');
+  if (fs.existsSync(pluginSrc)) {
+    const pluginDst = path.join(SKILL_DST, '.codebuddy-plugin');
+    fs.mkdirSync(pluginDst, { recursive: true });
+    for (const f of fs.readdirSync(pluginSrc)) {
+      fs.copyFileSync(path.join(pluginSrc, f), path.join(pluginDst, f));
+    }
+  }
+  // 1c. _user_meta.json 注册标记（对齐 qiankun 等已安装技能的结构）
+  fs.writeFileSync(
+    path.join(SKILL_DST, '_user_meta.json'),
+    JSON.stringify({ name: 'lulu-pet', installedAt: Date.now(), source: 'userImport' }, null, 2) + '\n'
+  );
   log('skill 已安装 →', SKILL_DST);
 }
 

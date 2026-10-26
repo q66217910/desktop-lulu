@@ -117,6 +117,93 @@ html, body {
   100% { opacity: 0; transform: translateY(-14px); }
 }
 
+/* ===== 思考：左右缓摆 + 💭 气泡 ===== */
+#stage.state-think #pet-img {
+  animation: think-sway 1.8s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+@keyframes think-sway {
+  0%, 100% { transform: translateX(-50%) rotate(-2.5deg); }
+  50%      { transform: translateX(-50%) rotate(2.5deg); }
+}
+
+/* 思考气泡：右上角云朵泡 + 两个尾巴小圈指向脑袋 */
+#thought {
+  position: absolute;
+  top: 22px;
+  right: 4px;
+  z-index: 10;
+  pointer-events: none; /* 不挡拖拽 */
+}
+.thought-bubble {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 34px;
+  background: #FFFFFF;
+  border: 2px solid #D68A3A;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(120, 70, 20, .2);
+  animation: thought-in .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+.thought-bubble .tdot {
+  width: 5px;
+  height: 5px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: #C08A3A;
+  animation: tdot-blink 1.2s ease-in-out infinite;
+}
+.thought-bubble .tdot:nth-child(2) { animation-delay: .2s; }
+.thought-bubble .tdot:nth-child(3) { animation-delay: .4s; }
+@keyframes tdot-blink {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  40%      { opacity: 1; transform: translateY(-2px); }
+}
+.thought-trail {
+  position: absolute;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 2px solid #D68A3A;
+}
+.thought-trail.t1 { width: 9px; height: 9px; top: 44px; right: 52px; }
+.thought-trail.t2 { width: 6px; height: 6px; top: 62px; right: 68px; }
+@keyframes thought-in {
+  from { opacity: 0; transform: scale(.6); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ===== 吃东西：咀嚼（喂橘子/牛奶/温泉） ===== */
+#stage.state-eat #pet-img { animation: munch .26s ease-in-out 4; transform-origin: 50% 100%; }
+@keyframes munch {
+  0%, 100% { transform: translateX(-50%) scale(1, 1); }
+  50%      { transform: translateX(-50%) scale(1.05, .9); }
+}
+
+/* ===== 好感度飘字 ===== */
+.bond-float {
+  position: absolute;
+  left: 50%;
+  bottom: 226px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #D05A7A;
+  text-shadow: 0 1px 0 #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 11;
+  animation: bond-float-up 1.2s ease-out forwards;
+}
+@keyframes bond-float-up {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px) scale(.8); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-32px) scale(1.05); }
+}
+
 /* ===== 庆祝星星粒子（DOM 版） ===== */
 .sparkle {
   position: absolute;

@@ -16,7 +16,8 @@
     "electron-builder": "^25.1.8"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0"
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "lulu-pet": "file:"
   },
   "build": {
     "appId": "com.lulu.pet",

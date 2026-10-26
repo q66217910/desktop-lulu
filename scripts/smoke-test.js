@@ -68,6 +68,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const act = await call('tools/call', { name: 'lulu_act', arguments: { action: 'celebrate' } });
   console.log('   ', act.result.content[0].text);
 
+  console.log('6) tools/call lulu_chat rename ...');
+  const chat = await call('tools/call', {
+    name: 'lulu_chat',
+    arguments: { event: 'rename', title: '修个 bug' },
+  });
+  console.log('   ', chat.result.content[0].text);
+
+  console.log('7) tools/call lulu_act think ...');
+  const think = await call('tools/call', { name: 'lulu_act', arguments: { action: 'think' } });
+  console.log('   ', think.result.content[0].text);
+
+  console.log('8) tools/call lulu_act idle（复位，避免卡在思考姿势）...');
+  const idle = await call('tools/call', { name: 'lulu_act', arguments: { action: 'idle' } });
+  console.log('   ', idle.result.content[0].text);
+
+  console.log('9) tools/call lulu_bond status（养成系统）...');
+  const bond = await call('tools/call', { name: 'lulu_bond', arguments: { action: 'status' } });
+  console.log('   ', bond.result.content[0].text);
+
+  console.log('10) tools/call lulu_chat stock（盯盘：+3.2% 应庆祝）...');
+  const stock = await call('tools/call', { name: 'lulu_chat', arguments: { event: 'stock', title: '测试股', changePct: 3.2 } });
+  console.log('   ', stock.result.content[0].text);
+
   console.log('\n全部通过 ✔  桌宠现在应该正在屏幕上跳。');
   child.kill();
   process.exit(0);
