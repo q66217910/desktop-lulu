@@ -35,10 +35,11 @@ npm start
 |---|---|
 | `lulu_say` | 气泡说话，如 "搞定！噜噜给你撒花~" |
 | `lulu_act` | 动作：celebrate 庆祝 / jump 弹跳 / think 思考（💭气泡） / sleep 睡觉 / wake 唤醒 / walk 散步 / idle 待机 |
-| `lulu_chat` | 关联 WorkBuddy 对话事件：open 新对话 / rename 对话命名（带标题）/ done 任务完成 / busy 长任务值守 / bye 暂别 / study 学习新课题 / quiz 学习打卡（答对庆祝答错安慰）/ stock 盯盘涨跌播报（大涨庆祝大跌安慰），自动匹配动作+台词 |
+| `lulu_chat` | 关联 WorkBuddy 对话事件：open 新对话 / rename 对话命名（带标题）/ done 任务完成 / busy 长任务值守 / bye 暂别 / study 学习新课题 / quiz 学习打卡（答对庆祝答错安慰）/ stock 盯盘涨跌播报（大涨庆祝大跌安慰）/ fail 任务失败（安慰），自动匹配动作+台词 |
 | `lulu_joke` | 随机讲一个水豚冷笑话 |
 | `lulu_status` | 查询运行状态与屏幕坐标 |
 | `lulu_focus` | 番茄钟：噜噜值守 N 分钟（默认 25），结束自动庆祝并提醒休息 |
+| `lulu_remind` | 到点提醒：N 分钟后（1-1440）或每天定时（"HH:MM"），气泡 + 托盘闪烁喊你；噜噜睡着也会被叫醒，重启不丢 |
 | `lulu_bond` | 好感度养成：查看等级/饥饿度/喂食记录、远程喂食（橘子/牛奶/温泉）、设置称呼 |
 
 ## 桌宠交互（鼠标）
@@ -56,6 +57,8 @@ npm start
 - **记住你**：超过 12 小时没理它，开机主动打招呼；超过 3 天会问"想你了！呜~去哪了"；设了称呼会带名字叫你（`lulu_bond` rename）
 - **饥饿度**：随时间上涨（约 10 分钟 +2），≥70 会喊饿"呜…头顶有点痒"；喂橘子/牛奶/温泉缓解（右键菜单、托盘、`lulu_bond` feed 都行）
 - **自主提醒**：整点报一句、每 45 分钟提醒喝水；系统空闲超 25 分钟提醒"坐太久啦，腰都圆了"（基于 `powerMonitor` 系统空闲时间，不是"没人摸宠物"）
+- **到点提醒**：说一句"N 分钟后提醒我 X"或"每天 X 点喊我 X"，噜噜到点气泡 + 托盘闪烁（落 `lulu-reminders.json`，重启不丢；每日重复自动重排）
+- **长任务哨兵**：WorkBuddy 跑构建/长任务时噜噜值守（`busy`），完成庆祝（`done`）、失败安慰（`fail`），切窗干别的也不用盯屏幕
 - **托盘 + 快捷键**：系统托盘左键点一下藏起/叫出；全局快捷键 `Ctrl+Alt+L` 同样效果
 - **全屏自动隐身**：检测到前台全屏应用（游戏/全屏视频/演示）时自动隐藏，退出全屏自动回来；手动藏起来后不打扰
 
@@ -82,7 +85,7 @@ npm start
 │   ├── main/main.js      # 主进程：窗口/穿透轮询/右键菜单/托盘/全局快捷键/全屏隐身/定时提醒/HTTP 控制端(127.0.0.1:18731)
 │   ├── pet/              # 渲染进程：姿势图 + 状态机动画 + 拖拽交互
 │   │   └── assets/       # 12 张透明底 PNG（idle/click/drag/walk/sleep/celebrate/say/error…）
-│   └── mcp/server.js     # MCP stdio server：7 个工具，桌宠没起时自动唤醒（MCP 连接即唤醒）
+│   └── mcp/server.js     # MCP stdio server：8 个工具，桌宠没起时自动唤醒（MCP 连接即唤醒）
 ├── refs/                 # 形象素材（Bing 搜索下载，含指针皮肤海报与表情包 GIF）
 ├── scripts/
 │   ├── start.js          # 启动器（自动清除 ELECTRON_RUN_AS_NODE，见下方坑）
@@ -105,6 +108,20 @@ node scripts/install.js --exe dist4/lulu-pet-portable.exe
 ```
 
 > 本次构建产物：项目根目录 `lulu-pet-portable.exe`（图片版形象）。若打包遇到 `rcedit` 报 "Unable to commit changes"，加 `-c.win.signAndEditExecutable=false`；若输出目录的 app.asar 被占用（`正在被另一进程使用`），换一个新输出目录（dist2/dist3/dist4）重试。
+
+**electron-builder 下载卡死的本地组装方案（本机实测）**：app-builder 打包时要从 GitHub 下载 115MB 的 electron zip，网络不通时会一直卡在 `downloading`（`win-unpacked` 空目录、app-builder.exe 进程挂着不动，等多久都没用）。此时不用下载，本地直接组装：
+
+```bash
+mkdir -p dist6/stage && cp package.json dist6/stage/ && cp -r src dist6/stage/
+node_modules/.bin/asar pack dist6/stage dist6/win-unpacked/resources/app.asar
+cp -r node_modules/electron/dist/* dist6/win-unpacked/
+mv dist6/win-unpacked/electron.exe dist6/win-unpacked/lulu-pet.exe
+rm -rf dist6/stage
+# 目录版 exe 依赖同目录的 resources/pak/dll，必须整目录铺过去，只拷 exe 起不来：
+cp -r dist6/win-unpacked/* ~/.lulu-pet/
+```
+
+> 桌宠本体零 npm 依赖（MCP server 的依赖在 asar 外由外部 node 解析），所以 asar 里只有 `src/` + `package.json` 就够。
 
 ## 已知坑（本机实测）
 

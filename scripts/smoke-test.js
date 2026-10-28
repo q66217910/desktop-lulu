@@ -91,6 +91,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const stock = await call('tools/call', { name: 'lulu_chat', arguments: { event: 'stock', title: '测试股', changePct: 3.2 } });
   console.log('   ', stock.result.content[0].text);
 
+  console.log('11) tools/call lulu_chat fail（失败应安慰不庆祝）...');
+  const fail = await call('tools/call', { name: 'lulu_chat', arguments: { event: 'fail' } });
+  console.log('   ', fail.result.content[0].text);
+
+  console.log('12) tools/call lulu_remind（1 分钟后提醒，验证注册）...');
+  const remind = await call('tools/call', { name: 'lulu_remind', arguments: { text: '测试提醒', minutes: 1 } });
+  console.log('   ', remind.result.content[0].text);
+
+  console.log('13) tools/call lulu_remind（每天 09:30，验证注册）...');
+  const remindDaily = await call('tools/call', { name: 'lulu_remind', arguments: { text: '开盘啦', daily: '09:30' } });
+  console.log('   ', remindDaily.result.content[0].text);
+
   console.log('\n全部通过 ✔  桌宠现在应该正在屏幕上跳。');
   child.kill();
   process.exit(0);

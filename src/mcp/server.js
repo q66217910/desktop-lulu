@@ -116,6 +116,11 @@ const CHAT_EVENTS = {
     actions: [],
     lines: ['去吧去吧，我看包', '不催…我守着', '慢慢跑，桌我看着'],
   },
+  // 任务失败：构建/测试/部署翻车（安慰，不庆祝）
+  fail: {
+    actions: [],
+    lines: ['挂了？不急…噜噜在呢', '呜~翻车了，摸摸头', '别慌…看看日志再说', '哼唧，错的不是你是环境'],
+  },
   // 对话收尾 / 用户暂别
   bye: {
     actions: [],
@@ -211,9 +216,9 @@ server.tool(
 
 server.tool(
   'lulu_chat',
-  '关联 WorkBuddy 对话事件：让噜噜做出与对话场景配套的动作+台词。open=新对话开启/用户回来, rename=对话命名或设置标题(传 title), done=对话中任务完成, busy=跑长任务时噜噜值守, bye=对话收尾暂别, study=开始学习新课题(传 title), quiz=学习打卡(传 correct 是否答对), stock=股票涨跌播报(传 title 股票名 + changePct 涨跌幅，大涨庆祝大跌安慰)。',
+  '关联 WorkBuddy 对话事件：让噜噜做出与对话场景配套的动作+台词。open=新对话开启/用户回来, rename=对话命名或设置标题(传 title), done=对话中任务完成, busy=跑长任务时噜噜值守, bye=对话收尾暂别, study=开始学习新课题(传 title), quiz=学习打卡(传 correct 是否答对), stock=股票涨跌播报(传 title 股票名 + changePct 涨跌幅，大涨庆祝大跌安慰), fail=任务失败/构建测试报错(安慰不庆祝)。',
   {
-    event: z.enum(['open', 'rename', 'done', 'busy', 'bye', 'study', 'quiz', 'stock']).describe('对话事件类型'),
+    event: z.enum(['open', 'rename', 'done', 'busy', 'bye', 'study', 'quiz', 'stock', 'fail']).describe('对话事件类型'),
     title: z.string().max(50).optional().describe('rename/study/stock 事件用：对话标题/课题名/股票名'),
     changePct: z.number().optional().describe('stock 事件用：涨跌幅百分比，如 3.2 或 -1.5'),
     correct: z.boolean().optional().describe('quiz 事件用：用户是否答对'),
@@ -268,6 +273,26 @@ server.tool(
     await ensurePet();
     const r = await request('POST', '/focus', { minutes }, readToken());
     return { content: [{ type: 'text', text: r.ok ? `好嘞，${minutes} 分钟值守开始，噜噜给你看着时间` : `失败：${r.error}` }] };
+  }
+);
+
+server.tool(
+  'lulu_remind',
+  '到点提醒：让噜噜在指定时间提醒用户一件事（气泡 + 托盘闪烁，噜噜睡着也会被叫醒，重启不丢）。minutes=N 表示 N 分钟后提醒（1-1440）；daily="HH:MM" 表示每天该时刻提醒（如 09:30 开盘提醒、18:00 下班提醒）。',
+  {
+    text: z.string().max(100).describe('提醒内容，简短口语化，如「开会啦」「该打卡了」'),
+    minutes: z.number().int().min(1).max(1440).optional().describe('多少分钟后提醒（1-1440），与 daily 二选一'),
+    daily: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional().describe('每天定时提醒，"HH:MM" 24 小时制，与 minutes 二选一'),
+  },
+  async ({ text, minutes, daily }) => {
+    if (!minutes && !daily) {
+      return { content: [{ type: 'text', text: '失败：必须指定 minutes 或 daily 之一' }] };
+    }
+    await ensurePet();
+    const r = await request('POST', '/remind', { text, minutes, daily }, readToken());
+    if (!r.ok) return { content: [{ type: 'text', text: `失败：${r.error || 'unknown'}` }] };
+    const when = r.daily ? `每天 ${r.daily}` : `${r.atText}`;
+    return { content: [{ type: 'text', text: `好嘞，${when} 提醒你：「${r.text}」` }] };
   }
 );
 

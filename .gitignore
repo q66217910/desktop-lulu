@@ -7,6 +7,8 @@ dist2/
 dist3/
 build*.log
 dist4/
+dist5/
+dist6/
 *.exe
 .playwright-cli/
 .workbuddy/

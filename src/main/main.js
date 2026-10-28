@@ -374,6 +374,108 @@ function startFocus(minutes) {
   return { ok: true, minutes };
 }
 
+/* ---------- 到点提醒：N 分钟后 / 每天定时 ----------
+ * 数据落 lulu-reminders.json，重启不丢；daily 的到点后自动重排到明天。 */
+const remindFile = path.join(userDataDir, 'lulu-reminders.json');
+let reminders = []; // { id, text, at, daily }  at=下次触发时间戳(ms), daily='HH:MM' 或 null
+let remindSeq = 1;
+
+function loadReminders() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(remindFile, 'utf8'));
+    if (Array.isArray(saved)) {
+      reminders = saved.filter((r) => r && typeof r.text === 'string' && r.text && typeof r.at === 'number');
+      remindSeq = reminders.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1;
+    }
+  } catch { /* 首次运行 */ }
+}
+
+function saveReminders() {
+  try {
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.writeFileSync(remindFile, JSON.stringify(reminders));
+  } catch { /* 磁盘异常不致命 */ }
+}
+
+/* daily='HH:MM' 时计算下一次触发的时间戳（已过则算明天） */
+function nextDailyAt(daily) {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(daily || ''));
+  if (!m) return null;
+  const d = new Date();
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+  return d.getTime();
+}
+
+function addReminder({ text, minutes, daily }) {
+  const t = String(text || '').trim().slice(0, 100);
+  if (!t) return { ok: false, error: 'empty text' };
+  let at = null;
+  let dailyVal = null;
+  if (daily) {
+    at = nextDailyAt(daily);
+    if (!at) return { ok: false, error: 'bad daily format, expect HH:MM' };
+    dailyVal = daily;
+  } else {
+    const mins = Math.min(1440, Math.max(1, parseInt(minutes, 10) || 5));
+    at = Date.now() + mins * 60 * 1000;
+  }
+  const r = { id: remindSeq++, text: t, at, daily: dailyVal };
+  reminders.push(r);
+  saveReminders();
+  scheduleReminder(r);
+  const when = new Date(at);
+  const atText = `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+  return { ok: true, id: r.id, text: t, at, daily: dailyVal, atText };
+}
+
+const remindTimers = new Map();
+function scheduleReminder(r) {
+  if (remindTimers.has(r.id)) { clearTimeout(remindTimers.get(r.id)); remindTimers.delete(r.id); }
+  const timer = setTimeout(() => fireReminder(r.id), Math.max(0, r.at - Date.now()));
+  if (typeof timer.unref === 'function') timer.unref(); // 不拖住进程退出
+  remindTimers.set(r.id, timer);
+}
+
+function fireReminder(id) {
+  remindTimers.delete(id);
+  const idx = reminders.findIndex((r) => r.id === id);
+  if (idx === -1) return;
+  const r = reminders[idx];
+  if (r.daily) {
+    r.at = nextDailyAt(r.daily); // 每天重复：重排到明天同一时刻
+    saveReminders();
+    scheduleReminder(r);
+  } else {
+    reminders.splice(idx, 1);
+    saveReminders();
+  }
+  if (sleeping) sendCmd({ action: 'wake' }); // 别对着趴姿提醒
+  sendCmd({ action: 'jump' });
+  sendCmd({ action: 'say', payload: { text: `铃！${r.text}`, ms: 8000 } });
+  flashTray(); // 窗口藏着时靠托盘闪烁引起注意
+}
+
+/* 托盘闪烁：16x16 图标/空图标交替，6 次后恢复 */
+let trayFlashTimer = null;
+function flashTray() {
+  if (!tray) return;
+  let icon = nativeImage.createFromPath(path.join(__dirname, '..', 'pet', 'assets', 'idle.png'));
+  if (!icon.isEmpty()) icon = icon.resize({ width: 16, height: 16 });
+  const empty = nativeImage.createEmpty();
+  clearInterval(trayFlashTimer);
+  let n = 0;
+  trayFlashTimer = setInterval(() => {
+    n++;
+    tray.setImage(n % 2 === 0 ? icon : empty);
+    if (n >= 6) {
+      clearInterval(trayFlashTimer);
+      trayFlashTimer = null;
+      tray.setImage(icon);
+    }
+  }, 400);
+}
+
 /* ---------- 托盘 ---------- */
 function createTray() {
   try {
@@ -551,6 +653,18 @@ function startControlServer() {
         res.writeHead(200);
         return res.end(JSON.stringify(r));
       }
+      if (req.method === 'POST' && url.pathname === '/remind') {
+        const r = addReminder({ text: data.text, minutes: data.minutes, daily: data.daily });
+        res.writeHead(r.ok ? 200 : 400);
+        return res.end(JSON.stringify(r));
+      }
+      if (req.method === 'GET' && url.pathname === '/reminders') {
+        res.writeHead(200);
+        return res.end(JSON.stringify({
+          ok: true,
+          reminders: reminders.map((r) => ({ id: r.id, text: r.text, at: r.at, daily: r.daily })),
+        }));
+      }
       res.writeHead(404);
       res.end(JSON.stringify({ ok: false, error: 'not found' }));
     });
@@ -568,9 +682,16 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     loadBond();
     refreshHunger();
+    loadReminders();
     createWindow();
     startControlServer();
     createTray();
+    // 提醒重载：daily 的重算到下一个时刻（不错过停机期间的）；一次性的到点即触发（补提醒）
+    for (const r of reminders) {
+      if (r.daily) r.at = nextDailyAt(r.daily);
+      scheduleReminder(r);
+    }
+    saveReminders();
     try {
       globalShortcut.register('Ctrl+Alt+L', () => toggleWindow());
     } catch (e) {
